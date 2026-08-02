@@ -1,6 +1,9 @@
 const state = {
   targetId: null,
   charts: {},
+  flameChart: null,
+  flameTimestampMs: null,
+  flameTargetId: null,
 };
 
 const chartDefaults = {
@@ -107,6 +110,7 @@ async function refreshTargets() {
     select.innerHTML = "<option value=\"\">No targets</option>";
     state.targetId = null;
     document.getElementById("target-meta").textContent = "Add a JMX target to begin.";
+    clearFlameGraph();
     return;
   }
   for (const t of targets) {
@@ -162,6 +166,43 @@ async function refreshMetrics() {
   ]);
 }
 
+function clearFlameGraph() {
+  const el = document.getElementById("flame-graph");
+  el.innerHTML = "";
+  state.flameChart = null;
+  state.flameTimestampMs = null;
+  state.flameTargetId = null;
+}
+
+function renderFlameGraph(tree) {
+  const container = document.getElementById("flame-graph");
+  container.innerHTML = "";
+  const width = Math.max(320, container.clientWidth || container.parentElement.clientWidth || 800);
+  const createFlamegraph = typeof flamegraph === "function" ? flamegraph : flamegraph.default;
+  const tip = flamegraph.tooltip
+    .defaultFlamegraphTooltip()
+    .text((d) => `${d.data.name}: ${d.data.value} samples`);
+  const chart = createFlamegraph()
+    .width(width)
+    .cellHeight(18)
+    .minFrameSize(1)
+    .tooltip(tip)
+    .setColorMapper((d) => {
+      if (!d.data.name || d.data.name === "all") {
+        return "#243049";
+      }
+      let hash = 0;
+      for (let i = 0; i < d.data.name.length; i++) {
+        hash = ((hash << 5) - hash) + d.data.name.charCodeAt(i);
+        hash |= 0;
+      }
+      const hue = Math.abs(hash) % 360;
+      return `hsl(${hue} 42% 38%)`;
+    });
+  d3.select(container).datum(tree).call(chart);
+  state.flameChart = chart;
+}
+
 async function refreshProfile() {
   if (!state.targetId) return;
   const profile = await api(`/api/targets/${encodeURIComponent(state.targetId)}/profile`);
@@ -170,6 +211,7 @@ async function refreshProfile() {
   tbody.innerHTML = "";
   if (!profile.timestampMs) {
     meta.textContent = profile.message || "Waiting for first dump…";
+    clearFlameGraph();
     return;
   }
   const windowSec = Math.max(1, Math.round((profile.windowEndMs - profile.windowStartMs) / 1000));
@@ -178,6 +220,19 @@ async function refreshProfile() {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${row.percent.toFixed(2)}</td><td>${row.samples}</td><td>${escapeHtml(row.method)}</td>`;
     tbody.appendChild(tr);
+  }
+  const sameSnapshot =
+    state.flameTargetId === state.targetId &&
+    state.flameTimestampMs === profile.timestampMs;
+  if (!sameSnapshot) {
+    if (profile.flameGraph && profile.flameGraph.value > 0) {
+      renderFlameGraph(profile.flameGraph);
+      state.flameTimestampMs = profile.timestampMs;
+      state.flameTargetId = state.targetId;
+    } else {
+      clearFlameGraph();
+      document.getElementById("flame-graph").textContent = "No stack samples in this dump.";
+    }
   }
 }
 

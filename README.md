@@ -6,7 +6,7 @@ MVP collector for **always-on bounded JFR** + **1s JMX metrics** from remote Hot
 
 - Scrapes heap, CPU, GC counters, and thread-state samples over JMX every second
 - Periodically streams a snapshot from the target’s always-on JFR recording via `FlightRecorderMXBean`
-- Parses `jdk.ExecutionSample` events into a hot-methods table
+- Parses `jdk.ExecutionSample` events into a hot-methods table and an inclusive CPU flame graph
 - Serves a small charting UI at `http://localhost:8080`
 
 ## Target JVM prerequisites
@@ -46,7 +46,7 @@ chmod +x scripts/*.sh
 ./scripts/run-local.sh
 ```
 
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080). Hot methods appear after the first JFR dump interval (default 10s in `run-local.sh`).
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). The flame graph and hot methods appear after the first JFR dump interval (default 10s in `run-local.sh`).
 
 Or run the two processes yourself:
 
@@ -64,7 +64,7 @@ Or run the two processes yourself:
 | `POST` | `/api/targets` | `{"host","port","label?"}` |
 | `DELETE` | `/api/targets/{id}` | Remove target |
 | `GET` | `/api/targets/{id}/metrics` | Time series (`?from=&to=` epoch ms) |
-| `GET` | `/api/targets/{id}/profile` | Latest hot-methods snapshot |
+| `GET` | `/api/targets/{id}/profile` | Latest snapshot (`hotMethods` + `flameGraph` tree) |
 
 ## Config
 

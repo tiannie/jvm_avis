@@ -8,6 +8,7 @@ public record ProfileSnapshot(
         long windowEndMs,
         long totalSamples,
         List<HotMethod> hotMethods,
+        FlameNode flameGraph,
         String dumpFile
 ) {
 }

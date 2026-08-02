@@ -147,6 +147,7 @@ public final class ApiServer {
                     empty.putNull("timestampMs");
                     empty.put("totalSamples", 0);
                     empty.putArray("hotMethods");
+                    empty.putNull("flameGraph");
                     empty.put("message", "No profile dump yet — wait for the next JFR interval");
                     writeJson(exchange, 200, empty);
                     return;

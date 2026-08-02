@@ -117,6 +117,28 @@ th, td {
 th { color: var(--muted); font-weight: 500; }
 td:nth-child(1), td:nth-child(2) { width: 5rem; }
 
+.flame-graph {
+  width: 100%;
+  min-height: 8rem;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.flame-graph svg {
+  max-width: 100%;
+}
+
+.d3-flame-graph-tip {
+  background: var(--bg2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  z-index: 10;
+}
+
 .status-ok { color: var(--ok); }
 .status-bad { color: var(--bad); }
 

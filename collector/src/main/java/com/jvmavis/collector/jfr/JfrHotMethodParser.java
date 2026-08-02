@@ -1,5 +1,6 @@
 package com.jvmavis.collector.jfr;
 
+import com.jvmavis.collector.model.FlameNode;
 import com.jvmavis.collector.model.HotMethod;
 import com.jvmavis.collector.model.ProfileSnapshot;
 import jdk.jfr.consumer.RecordedEvent;
@@ -11,6 +12,7 @@ import jdk.jfr.consumer.RecordingFile;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -21,6 +23,7 @@ public final class JfrHotMethodParser {
 
     public ProfileSnapshot parse(Path jfrFile, long collectedAtMs) throws Exception {
         Map<String, Long> counts = new HashMap<>();
+        MutableFlameNode flameRoot = new MutableFlameNode("all");
         long total = 0;
         Instant windowStart = null;
         Instant windowEnd = null;
@@ -39,11 +42,13 @@ public final class JfrHotMethodParser {
                 if (windowEnd == null || ts.isAfter(windowEnd)) {
                     windowEnd = ts;
                 }
-                String method = topFrame(event.getStackTrace());
-                if (method == null) {
+                List<String> stack = javaFramesRootToLeaf(event.getStackTrace());
+                if (stack.isEmpty()) {
                     continue;
                 }
-                counts.merge(method, 1L, Long::sum);
+                String leaf = stack.get(stack.size() - 1);
+                counts.merge(leaf, 1L, Long::sum);
+                addStack(flameRoot, stack);
                 total++;
             }
         }
@@ -66,6 +71,7 @@ public final class JfrHotMethodParser {
                 endMs,
                 total,
                 hot,
+                flameRoot.toFlameNode(),
                 jfrFile.getFileName().toString());
     }
 
@@ -75,30 +81,73 @@ public final class JfrHotMethodParser {
                 || "com.oracle.jdk.ExecutionSample".equals(type);
     }
 
-    private static String topFrame(RecordedStackTrace stack) {
+    /** JFR frames are leaf→root; reverse to root→leaf for flame graphs. */
+    private static List<String> javaFramesRootToLeaf(RecordedStackTrace stack) {
         if (stack == null) {
-            return null;
+            return List.of();
         }
         List<RecordedFrame> frames = stack.getFrames();
         if (frames == null || frames.isEmpty()) {
+            return List.of();
+        }
+        List<String> leafToRoot = new ArrayList<>();
+        for (RecordedFrame frame : frames) {
+            String name = frameName(frame);
+            if (name != null) {
+                leafToRoot.add(name);
+            }
+        }
+        if (leafToRoot.isEmpty()) {
+            return List.of();
+        }
+        Collections.reverse(leafToRoot);
+        return leafToRoot;
+    }
+
+    private static String frameName(RecordedFrame frame) {
+        if (frame == null || !frame.isJavaFrame()) {
             return null;
         }
-        for (RecordedFrame frame : frames) {
-            if (frame == null || !frame.isJavaFrame()) {
-                continue;
-            }
-            RecordedMethod method = frame.getMethod();
-            if (method == null || method.getType() == null) {
-                continue;
-            }
-            String typeName = method.getType().getName();
-            String methodName = method.getName();
-            return typeName + "." + methodName;
+        RecordedMethod method = frame.getMethod();
+        if (method == null || method.getType() == null) {
+            return null;
         }
-        return null;
+        return method.getType().getName() + "." + method.getName();
+    }
+
+    private static void addStack(MutableFlameNode root, List<String> rootToLeaf) {
+        MutableFlameNode node = root;
+        node.value++;
+        for (String frame : rootToLeaf) {
+            node = node.child(frame);
+            node.value++;
+        }
     }
 
     private static double round2(double value) {
         return Math.round(value * 100.0) / 100.0;
+    }
+
+    private static final class MutableFlameNode {
+        private final String name;
+        private long value;
+        private final Map<String, MutableFlameNode> children = new HashMap<>();
+
+        private MutableFlameNode(String name) {
+            this.name = name;
+        }
+
+        private MutableFlameNode child(String childName) {
+            return children.computeIfAbsent(childName, MutableFlameNode::new);
+        }
+
+        private FlameNode toFlameNode() {
+            List<FlameNode> kids = new ArrayList<>(children.size());
+            for (MutableFlameNode child : children.values()) {
+                kids.add(child.toFlameNode());
+            }
+            kids.sort(Comparator.comparingLong(FlameNode::value).reversed());
+            return new FlameNode(name, value, kids);
+        }
     }
 }
