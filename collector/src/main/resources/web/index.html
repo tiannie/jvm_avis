@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>jvm-avis</title>
+  <link rel="stylesheet" href="/static/app.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">jvm-avis</p>
+      <h1>Always-on JFR monitor</h1>
+    </div>
+    <form id="add-form" class="add-form">
+      <input id="host" name="host" placeholder="host" value="127.0.0.1" required />
+      <input id="port" name="port" type="number" placeholder="jmx port" value="9010" required />
+      <input id="label" name="label" placeholder="label (optional)" />
+      <button type="submit">Add target</button>
+    </form>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Targets</h2>
+        <select id="target-select"></select>
+      </div>
+      <div id="target-meta" class="meta">No target selected.</div>
+    </section>
+
+    <section class="charts">
+      <article class="panel">
+        <h2>Heap</h2>
+        <canvas id="heap-chart" height="120"></canvas>
+      </article>
+      <article class="panel">
+        <h2>CPU</h2>
+        <canvas id="cpu-chart" height="120"></canvas>
+      </article>
+      <article class="panel">
+        <h2>Threads</h2>
+        <canvas id="thread-chart" height="120"></canvas>
+      </article>
+      <article class="panel">
+        <h2>GC cumulative</h2>
+        <canvas id="gc-chart" height="120"></canvas>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Hot methods</h2>
+        <span id="profile-meta" class="meta"></span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>%</th>
+            <th>Samples</th>
+            <th>Method</th>
+          </tr>
+        </thead>
+        <tbody id="hot-methods"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
