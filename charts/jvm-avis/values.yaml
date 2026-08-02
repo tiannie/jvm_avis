@@ -1,0 +1,60 @@
+# Default values for jvm-avis (collector only).
+# Point `target` at an existing HotSpot JVM with JFR + JMX, or leave empty and POST /api/targets.
+
+replicaCount: 1
+
+image:
+  repository: jvm-avis-collector
+  tag: "0.1.0-SNAPSHOT"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: false
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: jvm-avis.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Auto-register a JMX target (optional).
+target:
+  host: ""
+  port: 9010
+
+config:
+  metricIntervalMs: 1000
+  jfrDumpIntervalSeconds: 15
+  retentionSeconds: 3600
+  recordingName: jvm-avis
+  dumpDir: /tmp/jfr-dumps
+
+# Extra env / args if needed
+extraEnv: []
+extraArgs: []

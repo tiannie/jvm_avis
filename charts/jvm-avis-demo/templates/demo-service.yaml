@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "jvm-avis-demo.demoFullname" . }}
+  labels:
+    {{- include "jvm-avis-demo.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.demo.service.type }}
+  ports:
+    - port: {{ .Values.demo.httpPort }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: {{ .Values.demo.jmxPort }}
+      targetPort: jmx
+      protocol: TCP
+      name: jmx
+  selector:
+    {{- include "jvm-avis-demo.selectorLabels" . | nindent 4 }}

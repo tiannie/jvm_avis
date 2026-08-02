@@ -1,0 +1,27 @@
+1. Get the application URL by running these commands:
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "jvm-avis.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  NOTE: LoadBalancer provisioning may take a few minutes.
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "jvm-avis.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else }}
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "jvm-avis.fullname" . }} 8080:{{ .Values.service.port }}
+  echo "UI: http://127.0.0.1:8080"
+{{- end }}
+
+{{- if .Values.target.host }}
+
+Auto-registered JMX target: {{ .Values.target.host }}:{{ .Values.target.port }}
+{{- else }}
+
+No initial target set. Register one with:
+  curl -X POST http://127.0.0.1:8080/api/targets -H 'content-type: application/json' \
+    -d '{"host":"<jmx-host>","port":9010}'
+{{- end }}

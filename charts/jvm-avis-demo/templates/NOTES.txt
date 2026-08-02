@@ -1,0 +1,11 @@
+1. Port-forward the collector UI:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/collector 8080:8080
+  echo "UI: http://127.0.0.1:8080"
+
+2. Demo-target is exposed in-cluster as Service {{ include "jvm-avis-demo.demoFullname" . }}
+   (HTTP {{ .Values.demo.httpPort }}, JMX {{ .Values.demo.jmxPort }}).
+   JAVA_RMI_SERVER_HOSTNAME={{ .Values.demo.rmiHostname }}
+
+{{- $collector := index .Values "jvm-avis" }}
+The collector auto-registers {{ $collector.target.host }}:{{ $collector.target.port }}.

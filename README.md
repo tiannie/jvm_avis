@@ -63,6 +63,44 @@ docker compose up --build
 
 Open [http://127.0.0.1:8080](http://127.0.0.1:8080). The collector reaches the demo over the Compose network at `demo-target:9010`; the demo sets `-Djava.rmi.server.hostname=demo-target` so JMX RMI works across containers.
 
+Tag images for Helm (or change `image.repository` / `image.tag` in values):
+
+```bash
+docker tag jvm_avis-collector:latest jvm-avis-collector:0.1.0-SNAPSHOT
+docker tag jvm_avis-demo-target:latest jvm-avis-demo-target:0.1.0-SNAPSHOT
+```
+
+## Helm
+
+Two charts under [`charts/`](charts/):
+
+| Chart | What it deploys |
+|-------|-----------------|
+| `jvm-avis` | Collector only — point `target` at an existing JMX endpoint, or register via API |
+| `jvm-avis-demo` | Demo-target + collector (subchart), wired over in-cluster JMX |
+
+```bash
+# Collector only (set target to your JVM)
+helm upgrade --install jvm-avis charts/jvm-avis \
+  --set target.host=my-app --set target.port=9010
+
+# Full demo stack
+helm dependency update charts/jvm-avis-demo
+helm upgrade --install jvm-avis-demo charts/jvm-avis-demo
+
+kubectl port-forward svc/collector 8080:8080
+```
+
+Package:
+
+```bash
+helm package charts/jvm-avis -d dist/
+helm dependency update charts/jvm-avis-demo
+helm package charts/jvm-avis-demo -d dist/
+```
+
+For the demo chart, `JAVA_RMI_SERVER_HOSTNAME` defaults to `demo-target` (the Service name). Override `demo.rmiHostname` if you change `demo.fullnameOverride`.
+
 ## API
 
 | Method | Path | Description |
@@ -91,4 +129,5 @@ Open [http://127.0.0.1:8080](http://127.0.0.1:8080). The collector reaches the d
 collector/     JMX scrape, JFR stream dump, API, UI
 demo-target/   Load generator for local verification
 scripts/       Launch helpers with recommended JVM flags
+charts/        Helm charts (jvm-avis, jvm-avis-demo)
 ```

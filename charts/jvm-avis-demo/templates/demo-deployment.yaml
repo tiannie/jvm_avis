@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "jvm-avis-demo.demoFullname" . }}
+  labels:
+    {{- include "jvm-avis-demo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.demo.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "jvm-avis-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.demo.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "jvm-avis-demo.selectorLabels" . | nindent 8 }}
+        {{- with .Values.demo.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      containers:
+        - name: demo-target
+          image: "{{ .Values.demo.image.repository }}:{{ .Values.demo.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.demo.image.pullPolicy }}
+          env:
+            - name: DEMO_HTTP_PORT
+              value: {{ .Values.demo.httpPort | quote }}
+            - name: JMX_PORT
+              value: {{ .Values.demo.jmxPort | quote }}
+            - name: JAVA_RMI_SERVER_HOSTNAME
+              value: {{ .Values.demo.rmiHostname | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.demo.httpPort }}
+              protocol: TCP
+            - name: jmx
+              containerPort: {{ .Values.demo.jmxPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          {{- with .Values.demo.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.demo.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.demo.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.demo.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

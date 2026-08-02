@@ -1,0 +1,6 @@
+dependencies:
+- name: jvm-avis
+  repository: file://../jvm-avis
+  version: 0.1.0
+digest: sha256:3d48f505a239478869b09c6fdeac028e6c89c20d01ce6e8adb8dc90d26f2ecb7
+generated: "2026-08-02T05:41:17.387423+02:00"

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: jvm-avis-demo
+description: JVM Avis demo stack — collector + demo-target (JFR + JMX)
+type: application
+version: 0.1.0
+appVersion: "0.1.0-SNAPSHOT"
+dependencies:
+  - name: jvm-avis
+    version: 0.1.0
+    repository: "file://../jvm-avis"

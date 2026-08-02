@@ -9,3 +9,4 @@ target/logs/
 *.jfr
 *.log
 .temp/
+dist/

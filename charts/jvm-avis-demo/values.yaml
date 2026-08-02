@@ -1,0 +1,37 @@
+# Demo stack: always-on demo-target + collector auto-registered to it.
+# Stable in-cluster DNS names via fullnameOverride so JMX RMI hostname is predictable.
+
+demo:
+  replicaCount: 1
+  fullnameOverride: demo-target
+  image:
+    repository: jvm-avis-demo-target
+    tag: "0.1.0-SNAPSHOT"
+    pullPolicy: IfNotPresent
+  httpPort: 8081
+  jmxPort: 9010
+  # Must match the Service DNS name reachable from the collector pod.
+  rmiHostname: demo-target
+  service:
+    type: ClusterIP
+  resources: {}
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+jvm-avis:
+  fullnameOverride: collector
+  image:
+    repository: jvm-avis-collector
+    tag: "0.1.0-SNAPSHOT"
+    pullPolicy: IfNotPresent
+  target:
+    host: demo-target
+    port: 9010
+  config:
+    jfrDumpIntervalSeconds: 10
+  service:
+    type: ClusterIP
+    port: 8080

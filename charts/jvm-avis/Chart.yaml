@@ -1,0 +1,6 @@
+apiVersion: v2
+name: jvm-avis
+description: JVM Avis collector — JMX metrics and always-on JFR profiling UI
+type: application
+version: 0.1.0
+appVersion: "0.1.0-SNAPSHOT"
