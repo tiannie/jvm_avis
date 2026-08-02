@@ -1,0 +1,13 @@
+.git
+.cursor
+.idea
+**/*.iml
+.classpath
+.project
+.settings
+.DS_Store
+**/target
+*.jfr
+*.log
+target/logs
+agent-transcripts

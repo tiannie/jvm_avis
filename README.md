@@ -55,6 +55,14 @@ Or run the two processes yourself:
 ./scripts/run-collector.sh      # UI/API :8080, auto-registers 127.0.0.1:9010
 ```
 
+## Docker
+
+```bash
+docker compose up --build
+```
+
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). The collector reaches the demo over the Compose network at `demo-target:9010`; the demo sets `-Djava.rmi.server.hostname=demo-target` so JMX RMI works across containers.
+
 ## API
 
 | Method | Path | Description |

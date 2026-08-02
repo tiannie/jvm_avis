@@ -1,0 +1,22 @@
+services:
+  demo-target:
+    build:
+      context: .
+      dockerfile: demo-target.Dockerfile
+    environment:
+      DEMO_HTTP_PORT: "8081"
+      JMX_PORT: "9010"
+      JAVA_RMI_SERVER_HOSTNAME: demo-target
+    ports:
+      - "8081:8081"
+      - "9010:9010"
+
+  collector:
+    build:
+      context: .
+      dockerfile: collector.Dockerfile
+    depends_on:
+      - demo-target
+    command: ["--target", "demo-target:9010", "--jfr-dump-interval-s", "10"]
+    ports:
+      - "8080:8080"
