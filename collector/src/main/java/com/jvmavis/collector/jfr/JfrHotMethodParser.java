@@ -21,7 +21,12 @@ import java.util.Map;
 public final class JfrHotMethodParser {
     private static final int TOP_N = 25;
 
-    public ProfileSnapshot parse(Path jfrFile, long collectedAtMs) throws Exception {
+    /**
+     * @param after when non-null, events at or before this instant are ignored. A bounded stream is
+     *              delivered at chunk granularity, so the file normally re-includes samples the
+     *              previous dump already counted.
+     */
+    public ParsedProfile parse(Path jfrFile, long collectedAtMs, Instant after) throws Exception {
         Map<String, Long> counts = new HashMap<>();
         MutableFlameNode flameRoot = new MutableFlameNode("all");
         long total = 0;
@@ -36,6 +41,9 @@ public final class JfrHotMethodParser {
                     continue;
                 }
                 Instant ts = event.getStartTime();
+                if (after != null && !ts.isAfter(after)) {
+                    continue;
+                }
                 if (windowStart == null || ts.isBefore(windowStart)) {
                     windowStart = ts;
                 }
@@ -65,7 +73,7 @@ public final class JfrHotMethodParser {
 
         long startMs = windowStart == null ? collectedAtMs : windowStart.toEpochMilli();
         long endMs = windowEnd == null ? collectedAtMs : windowEnd.toEpochMilli();
-        return new ProfileSnapshot(
+        ProfileSnapshot snapshot = new ProfileSnapshot(
                 collectedAtMs,
                 startMs,
                 endMs,
@@ -73,6 +81,7 @@ public final class JfrHotMethodParser {
                 hot,
                 flameRoot.toFlameNode(),
                 jfrFile.getFileName().toString());
+        return new ParsedProfile(snapshot, windowEnd);
     }
 
     private static boolean isExecutionSample(String type) {

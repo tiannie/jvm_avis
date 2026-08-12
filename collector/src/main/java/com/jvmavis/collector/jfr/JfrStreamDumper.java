@@ -13,6 +13,7 @@ import javax.management.openmbean.TabularType;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -41,7 +42,16 @@ public final class JfrStreamDumper {
                 : preferredRecordingName.toLowerCase(Locale.ROOT);
     }
 
-    public Path dumpToFile(MBeanServerConnection mbsc, Path outputFile) throws Exception {
+    /**
+     * Streams the target's recording into {@code outputFile}.
+     *
+     * @param since when non-null, only chunks covering this instant onwards are transferred. The
+     *              recording holds its whole {@code maxage} window, so without a bound every dump
+     *              re-sends data the previous dump already read. Chunk granularity means the
+     *              returned data still starts slightly before {@code since}; callers must drop the
+     *              overlap by event timestamp.
+     */
+    public Path dumpToFile(MBeanServerConnection mbsc, Path outputFile, Instant since) throws Exception {
         if (!mbsc.isRegistered(FLIGHT_RECORDER)) {
             throw new IllegalStateException(
                     "FlightRecorderMXBean not registered — target JRE may lack JFR or management modules");
@@ -60,6 +70,9 @@ public final class JfrStreamDumper {
 
             Map<String, String> options = new HashMap<>();
             options.put("blockSize", "1048576");
+            if (since != null) {
+                options.put("startTime", since.toString());
+            }
             streamId = (Long) mbsc.invoke(
                     FLIGHT_RECORDER,
                     "openStream",

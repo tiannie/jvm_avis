@@ -5,7 +5,7 @@ MVP collector for **always-on bounded JFR** + **1s JMX metrics** from remote Hot
 ## What it does
 
 - Scrapes heap, CPU, GC counters, and thread-state samples over JMX every second
-- Periodically streams a snapshot from the target’s always-on JFR recording via `FlightRecorderMXBean`
+- Periodically streams a snapshot from the target’s always-on JFR recording via `FlightRecorderMXBean`, fetching only what the previous dump did not already read
 - Parses `jdk.ExecutionSample` events into a hot-methods table and an inclusive CPU flame graph
 - Serves a small charting UI at `http://localhost:8080`
 
@@ -120,6 +120,7 @@ For the demo chart, `JAVA_RMI_SERVER_HOSTNAME` defaults to `demo-target` (the Se
 | `--target` / `JVM_AVIS_TARGET_HOST` + `_PORT` | none | Auto-register JMX target |
 | `--metric-interval-ms` | `1000` | Metric scrape period |
 | `--jfr-dump-interval-s` | `15` | JFR stream dump period |
+| `--profile-window-s` / `JVM_AVIS_PROFILE_WINDOW_S` | `300` | Profile window rebuilt by merging dumps |
 | `JVM_AVIS_RETENTION_S` | `3600` | In-memory metric retention |
 | `JVM_AVIS_RECORDING_NAME` | `jvm-avis` | Preferred JFR recording name |
 

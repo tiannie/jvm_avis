@@ -3,6 +3,7 @@ package com.jvmavis.collector.jmx;
 import com.jvmavis.collector.config.CollectorConfig;
 import com.jvmavis.collector.jfr.JfrHotMethodParser;
 import com.jvmavis.collector.jfr.JfrStreamDumper;
+import com.jvmavis.collector.jfr.ParsedProfile;
 import com.jvmavis.collector.model.MetricSample;
 import com.jvmavis.collector.model.ProfileSnapshot;
 import com.jvmavis.collector.model.TargetInfo;
@@ -11,6 +12,7 @@ import com.jvmavis.collector.store.ProfileStore;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -89,10 +91,14 @@ public final class TargetMonitor {
                     target.id() + "-" + System.currentTimeMillis() + ".jfr");
             try {
                 JmxConnection conn = target.ensureConnected();
-                dumper.dumpToFile(conn.connection(), dumpFile);
-                ProfileSnapshot snapshot = parser.parse(dumpFile, System.currentTimeMillis());
+                // First dump is unbounded so the UI has a full window immediately; later dumps
+                // only carry what the previous one did not already read.
+                Instant cursor = target.profileCursor();
+                dumper.dumpToFile(conn.connection(), dumpFile, cursor);
+                ParsedProfile parsed = parser.parse(dumpFile, System.currentTimeMillis(), cursor);
+                ProfileSnapshot snapshot = parsed.snapshot();
                 profileStore.add(target.id(), snapshot);
-                target.markProfileOk(snapshot.timestampMs());
+                target.markProfileOk(snapshot.timestampMs(), parsed.newestSample());
             } catch (Exception e) {
                 String msg = e.getMessage() == null ? e.toString() : e.getMessage();
                 target.markError("JFR dump: " + msg);

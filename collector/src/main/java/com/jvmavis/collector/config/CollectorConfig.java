@@ -8,6 +8,7 @@ public record CollectorConfig(
         int bindPort,
         long metricIntervalMs,
         int jfrDumpIntervalSeconds,
+        int profileWindowSeconds,
         int metricRetentionSeconds,
         Path dumpDir,
         String initialTargetHost,
@@ -18,6 +19,7 @@ public record CollectorConfig(
         int bindPort = envInt("JVM_AVIS_PORT", 8080);
         long metricIntervalMs = envLong("JVM_AVIS_METRIC_INTERVAL_MS", 1000);
         int jfrDumpIntervalSeconds = envInt("JVM_AVIS_JFR_DUMP_INTERVAL_S", 15);
+        int profileWindowSeconds = envInt("JVM_AVIS_PROFILE_WINDOW_S", 300);
         int metricRetentionSeconds = envInt("JVM_AVIS_RETENTION_S", 3600);
         Path dumpDir = Path.of(env("JVM_AVIS_DUMP_DIR", "target/jfr-dumps"));
 
@@ -37,6 +39,7 @@ public record CollectorConfig(
                 }
                 case "--metric-interval-ms" -> metricIntervalMs = Long.parseLong(args[++i]);
                 case "--jfr-dump-interval-s" -> jfrDumpIntervalSeconds = Integer.parseInt(args[++i]);
+                case "--profile-window-s" -> profileWindowSeconds = Integer.parseInt(args[++i]);
                 case "--dump-dir" -> dumpDir = Path.of(args[++i]);
                 case "--help", "-h" -> {
                     printHelp();
@@ -51,6 +54,7 @@ public record CollectorConfig(
                 bindPort,
                 metricIntervalMs,
                 jfrDumpIntervalSeconds,
+                profileWindowSeconds,
                 metricRetentionSeconds,
                 dumpDir,
                 targetHost,
@@ -66,6 +70,7 @@ public record CollectorConfig(
                   --target <host:port>          Auto-register JMX target
                   --metric-interval-ms <ms>     Metric scrape interval (default 1000)
                   --jfr-dump-interval-s <s>     JFR stream dump interval (default 15)
+                  --profile-window-s <s>        Profile window rebuilt from dumps (default 300)
                   --dump-dir <path>             Local dir for temporary .jfr dumps
                 """);
     }

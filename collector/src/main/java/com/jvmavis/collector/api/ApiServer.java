@@ -141,7 +141,7 @@ public final class ApiServer {
                     writeJson(exchange, 404, Map.of("error", "target not found"));
                     return;
                 }
-                var latest = profileStore.latest(id);
+                var latest = profileStore.rolling(id, config.profileWindowSeconds() * 1000L);
                 if (latest.isEmpty()) {
                     ObjectNode empty = mapper.createObjectNode();
                     empty.putNull("timestampMs");

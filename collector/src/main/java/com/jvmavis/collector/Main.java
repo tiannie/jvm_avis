@@ -55,9 +55,10 @@ public final class Main {
                 config.bindHost(),
                 config.bindPort());
         System.out.printf(
-                "metric interval=%dms jfr dump interval=%ds retention=%ds dumpDir=%s%n",
+                "metric interval=%dms jfr dump interval=%ds profile window=%ds retention=%ds dumpDir=%s%n",
                 config.metricIntervalMs(),
                 config.jfrDumpIntervalSeconds(),
+                config.profileWindowSeconds(),
                 config.metricRetentionSeconds(),
                 config.dumpDir().toAbsolutePath());
 

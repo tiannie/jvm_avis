@@ -51,6 +51,8 @@ target:
 config:
   metricIntervalMs: 1000
   jfrDumpIntervalSeconds: 15
+  # Dumps are incremental; the UI profile is rebuilt by merging those from this window.
+  profileWindowSeconds: 300
   retentionSeconds: 3600
   recordingName: jvm-avis
   dumpDir: /tmp/jfr-dumps

@@ -2,6 +2,7 @@ package com.jvmavis.collector.jmx;
 
 import com.jvmavis.collector.model.TargetInfo;
 
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class MonitoredTarget {
@@ -13,6 +14,8 @@ final class MonitoredTarget {
     private final AtomicReference<String> lastError = new AtomicReference<>(null);
     private final AtomicReference<Long> lastMetricAtMs = new AtomicReference<>(null);
     private final AtomicReference<Long> lastProfileAtMs = new AtomicReference<>(null);
+    /** Newest sample already counted, in the target's clock. Bounds the next stream. */
+    private final AtomicReference<Instant> profileCursor = new AtomicReference<>(null);
     private volatile JmxConnection connection;
 
     MonitoredTarget(String id, String host, int port, String label) {
@@ -65,8 +68,19 @@ final class MonitoredTarget {
         }
     }
 
-    void markProfileOk(long ts) {
+    Instant profileCursor() {
+        return profileCursor.get();
+    }
+
+    /**
+     * @param newestSample newest counted sample, or null when the dump held none. Leaving the
+     *                     cursor put on an empty dump makes the next stream re-cover the gap.
+     */
+    void markProfileOk(long ts, Instant newestSample) {
         lastProfileAtMs.set(ts);
+        if (newestSample != null) {
+            profileCursor.set(newestSample);
+        }
         status.set("OK");
         lastError.set(null);
     }

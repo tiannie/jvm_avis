@@ -47,6 +47,8 @@ spec:
             {{- end }}
             - --jfr-dump-interval-s
             - {{ .Values.config.jfrDumpIntervalSeconds | quote }}
+            - --profile-window-s
+            - {{ .Values.config.profileWindowSeconds | default 300 | quote }}
             - --metric-interval-ms
             - {{ .Values.config.metricIntervalMs | quote }}
             - --dump-dir
