@@ -129,7 +129,7 @@ public final class JfrDumpParser {
 
         return new ParsedProfile(
                 snapshot,
-                cursor.advance(newestExecution, newestAllocation, newestGcPause));
+                cursor.advance(newestExecution, newestAllocation, newestGcPause, windowEnd));
     }
 
     private static boolean isCounted(Instant ts, Instant watermark) {

@@ -29,11 +29,30 @@ public record ProfileCursor(Instant execution, Instant allocation, Instant gcPau
         return earliest;
     }
 
-    /** Keeps the previous watermark for any type the dump held no events for. */
-    public ProfileCursor advance(Instant newExecution, Instant newAllocation, Instant newGcPause) {
+    /**
+     * @param coveredThrough newest event seen in the dump across all types, or null if it held
+     *                       none. A type with no events of its own advances to here: the dump read
+     *                       that whole range and found none, which is what makes the next stream
+     *                       bounded. Without it a rare type pins the cursor — GC pauses every 30s
+     *                       against a 10s dump interval had every fetch reaching back three times
+     *                       further than needed, and an app that collects once an hour would drag
+     *                       the whole recording across on every single dump.
+     */
+    public ProfileCursor advance(
+            Instant newExecution, Instant newAllocation, Instant newGcPause, Instant coveredThrough) {
         return new ProfileCursor(
-                newExecution == null ? execution : newExecution,
-                newAllocation == null ? allocation : newAllocation,
-                newGcPause == null ? gcPause : newGcPause);
+                pick(execution, newExecution, coveredThrough),
+                pick(allocation, newAllocation, coveredThrough),
+                pick(gcPause, newGcPause, coveredThrough));
+    }
+
+    private static Instant pick(Instant current, Instant observed, Instant coveredThrough) {
+        if (observed != null) {
+            return observed;
+        }
+        if (coveredThrough != null && (current == null || coveredThrough.isAfter(current))) {
+            return coveredThrough;
+        }
+        return current;
     }
 }
