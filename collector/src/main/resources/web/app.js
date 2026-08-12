@@ -1,9 +1,8 @@
 const state = {
   targetId: null,
   charts: {},
-  flameChart: null,
-  flameTimestampMs: null,
-  flameTargetId: null,
+  // Keyed by container id so each flame graph only re-renders when its snapshot changes.
+  flames: {},
 };
 
 const chartDefaults = {
@@ -66,6 +65,33 @@ function makeMultiChart(id, datasets) {
   });
 }
 
+const SERIES_COLORS = [
+  "#6ea8ff", "#3ecf8e", "#ffc857", "#ff6b7a", "#9b7bff", "#5ad1e6", "#ff9f43", "#c3f584",
+];
+
+/** Pool and collector names are discovered at runtime, so datasets are rebuilt when they change. */
+function setDynamicSeries(chart, labels, series) {
+  const signature = series.map((s) => s.label).join("|");
+  if (chart.seriesSignature !== signature) {
+    chart.data.datasets = series.map((s, i) => ({
+      label: s.label,
+      data: [],
+      borderColor: SERIES_COLORS[i % SERIES_COLORS.length],
+      backgroundColor: SERIES_COLORS[i % SERIES_COLORS.length] + "22",
+      tension: 0.2,
+      pointRadius: 0,
+      borderWidth: 2,
+      fill: false,
+    }));
+    chart.seriesSignature = signature;
+  }
+  chart.data.labels = labels;
+  series.forEach((s, i) => {
+    chart.data.datasets[i].data = s.data;
+  });
+  chart.update();
+}
+
 function initCharts() {
   state.charts.heap = makeMultiChart("heap-chart", [
     { label: "used MB", color: "#6ea8ff" },
@@ -82,6 +108,16 @@ function initCharts() {
     { label: "collections", color: "#ff9f43" },
     { label: "time ms", color: "#5ad1e6" },
   ]);
+  state.charts.pools = makeMultiChart("pool-chart", []);
+  state.charts.collectors = makeMultiChart("collector-chart", []);
+  state.charts.gcPause = new Chart(document.getElementById("gc-pause-chart"), {
+    type: "bar",
+    data: {
+      labels: [],
+      datasets: [{ label: "pause ms", data: [], backgroundColor: "#ff6b7a", borderWidth: 0 }],
+    },
+    options: chartDefaults,
+  });
 }
 
 function fmtTime(ts) {
@@ -90,6 +126,18 @@ function fmtTime(ts) {
 
 function mb(bytes) {
   return bytes / (1024 * 1024);
+}
+
+function fmtBytes(value) {
+  if (!value) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let n = value;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
+  return `${i === 0 ? n : n.toFixed(1)} ${units[i]}`;
 }
 
 async function api(path, options) {
@@ -110,7 +158,7 @@ async function refreshTargets() {
     select.innerHTML = "<option value=\"\">No targets</option>";
     state.targetId = null;
     document.getElementById("target-meta").textContent = "Add a JMX target to begin.";
-    clearFlameGraph();
+    clearAllFlameGraphs();
     return;
   }
   for (const t of targets) {
@@ -141,9 +189,14 @@ function setSeries(chart, labels, seriesList) {
   chart.update();
 }
 
+// Retention is an hour; sending every sample on a 2s poll would grow to megabytes per request.
+const METRIC_VIEW_MS = 10 * 60 * 1000;
+
 async function refreshMetrics() {
   if (!state.targetId) return;
-  const samples = await api(`/api/targets/${encodeURIComponent(state.targetId)}/metrics`);
+  const from = Date.now() - METRIC_VIEW_MS;
+  const samples = await api(
+    `/api/targets/${encodeURIComponent(state.targetId)}/metrics?from=${from}`);
   const labels = samples.map((s) => fmtTime(s.timestampMs));
   setSeries(state.charts.heap, labels, [
     samples.map((s) => mb(s.heapUsedBytes)),
@@ -164,24 +217,64 @@ async function refreshMetrics() {
     samples.map((s) => s.gcCollectionCount),
     samples.map((s) => s.gcCollectionTimeMs),
   ]);
+  renderMemoryPools(labels, samples);
+  renderCollectors(labels, samples);
 }
 
-function clearFlameGraph() {
-  const el = document.getElementById("flame-graph");
-  el.innerHTML = "";
-  state.flameChart = null;
-  state.flameTimestampMs = null;
-  state.flameTargetId = null;
+function namesFrom(samples, field, key) {
+  const names = new Set();
+  for (const sample of samples) {
+    for (const entry of sample[field] || []) {
+      names.add(entry[key]);
+    }
+  }
+  return [...names].sort();
 }
 
-function renderFlameGraph(tree) {
-  const container = document.getElementById("flame-graph");
+function renderMemoryPools(labels, samples) {
+  setDynamicSeries(state.charts.pools, labels, namesFrom(samples, "memoryPools", "name").map((name) => ({
+    label: name.replace(/^G1 /, ""),
+    data: samples.map((s) => {
+      const pool = (s.memoryPools || []).find((p) => p.name === name);
+      return pool ? mb(pool.usedBytes) : null;
+    }),
+  })));
+
+  const latest = samples[samples.length - 1];
+  document.getElementById("pool-meta").textContent = latest
+    ? `non-heap ${fmtBytes(latest.nonHeapUsedBytes)}`
+    : "";
+}
+
+function renderCollectors(labels, samples) {
+  const names = namesFrom(samples, "gcCollectors", "name");
+  setDynamicSeries(state.charts.collectors, labels, names.map((name) => ({
+    label: name,
+    data: samples.map((s) => {
+      const gc = (s.gcCollectors || []).find((c) => c.name === name);
+      return gc ? gc.collections : null;
+    }),
+  })));
+}
+
+function clearFlameGraph(containerId = "flame-graph") {
+  document.getElementById(containerId).innerHTML = "";
+  delete state.flames[containerId];
+}
+
+function clearAllFlameGraphs() {
+  clearFlameGraph("flame-graph");
+  clearFlameGraph("alloc-flame-graph");
+}
+
+function renderFlameGraph(containerId, tree, formatValue) {
+  const container = document.getElementById(containerId);
   container.innerHTML = "";
   const width = Math.max(320, container.clientWidth || container.parentElement.clientWidth || 800);
   const createFlamegraph = typeof flamegraph === "function" ? flamegraph : flamegraph.default;
   const tip = flamegraph.tooltip
     .defaultFlamegraphTooltip()
-    .text((d) => `${d.data.name}: ${d.data.value} samples`);
+    .text((d) => `${d.data.name}: ${formatValue(d.data.value)}`);
   const chart = createFlamegraph()
     .width(width)
     .cellHeight(18)
@@ -200,40 +293,91 @@ function renderFlameGraph(tree) {
       return `hsl(${hue} 42% 38%)`;
     });
   d3.select(container).datum(tree).call(chart);
-  state.flameChart = chart;
+}
+
+/** Re-rendering a flame graph resets zoom, so only redraw when the snapshot actually moved. */
+function drawFlameGraphIfChanged(containerId, tree, timestampMs, formatValue, emptyText) {
+  const previous = state.flames[containerId];
+  if (previous && previous.targetId === state.targetId && previous.timestampMs === timestampMs) {
+    return;
+  }
+  if (tree && tree.value > 0) {
+    renderFlameGraph(containerId, tree, formatValue);
+    state.flames[containerId] = { targetId: state.targetId, timestampMs };
+  } else {
+    clearFlameGraph(containerId);
+    document.getElementById(containerId).textContent = emptyText;
+  }
+}
+
+function fillTable(tbodyId, rows, toCells) {
+  const tbody = document.getElementById(tbodyId);
+  tbody.innerHTML = "";
+  for (const row of rows || []) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = toCells(row);
+    tbody.appendChild(tr);
+  }
 }
 
 async function refreshProfile() {
   if (!state.targetId) return;
-  const profile = await api(`/api/targets/${encodeURIComponent(state.targetId)}/profile`);
+  const since = state.profileTimestampMs && state.profileTargetId === state.targetId
+    ? `?since=${state.profileTimestampMs}`
+    : "";
+  const profile = await api(`/api/targets/${encodeURIComponent(state.targetId)}/profile${since}`);
+  if (profile.unchanged) return;
+  state.profileTimestampMs = profile.timestampMs;
+  state.profileTargetId = state.targetId;
   const meta = document.getElementById("profile-meta");
-  const tbody = document.getElementById("hot-methods");
-  tbody.innerHTML = "";
   if (!profile.timestampMs) {
     meta.textContent = profile.message || "Waiting for first dump…";
-    clearFlameGraph();
+    fillTable("hot-methods", [], () => "");
+    fillTable("alloc-types", [], () => "");
+    clearAllFlameGraphs();
     return;
   }
   const windowSec = Math.max(1, Math.round((profile.windowEndMs - profile.windowStartMs) / 1000));
+
   meta.textContent = `${fmtTime(profile.timestampMs)} · ${profile.totalSamples} samples · ~${windowSec}s window`;
-  for (const row of profile.hotMethods || []) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${row.percent.toFixed(2)}</td><td>${row.samples}</td><td>${escapeHtml(row.method)}</td>`;
-    tbody.appendChild(tr);
+  fillTable("hot-methods", profile.hotMethods, (row) =>
+    `<td>${row.percent.toFixed(2)}</td><td>${row.samples}</td><td>${escapeHtml(row.method)}</td>`);
+  drawFlameGraphIfChanged(
+    "flame-graph",
+    profile.flameGraph,
+    profile.timestampMs,
+    (v) => `${v} samples`,
+    "No stack samples in this dump.");
+
+  const allocRate = fmtBytes(Math.round(profile.allocatedBytes / windowSec));
+  document.getElementById("alloc-meta").textContent = profile.allocationSamples
+    ? `${fmtBytes(profile.allocatedBytes)} est. · ${allocRate}/s · ${profile.allocationSamples} samples`
+    : "No allocation samples in window";
+  fillTable("alloc-types", profile.topAllocations, (row) =>
+    `<td>${row.percent.toFixed(2)}</td><td>${fmtBytes(row.bytes)}</td><td>${escapeHtml(row.type)}</td>`);
+  drawFlameGraphIfChanged(
+    "alloc-flame-graph",
+    profile.allocationFlameGraph,
+    profile.timestampMs,
+    fmtBytes,
+    "No allocation samples in this dump.");
+
+  renderGcPauses(profile.gcPauses);
+}
+
+function renderGcPauses(gc) {
+  const meta = document.getElementById("gc-pause-meta");
+  if (!gc || !gc.count) {
+    meta.textContent = "No pauses in window";
+    setSeries(state.charts.gcPause, [], [[]]);
+    return;
   }
-  const sameSnapshot =
-    state.flameTargetId === state.targetId &&
-    state.flameTimestampMs === profile.timestampMs;
-  if (!sameSnapshot) {
-    if (profile.flameGraph && profile.flameGraph.value > 0) {
-      renderFlameGraph(profile.flameGraph);
-      state.flameTimestampMs = profile.timestampMs;
-      state.flameTargetId = state.targetId;
-    } else {
-      clearFlameGraph();
-      document.getElementById("flame-graph").textContent = "No stack samples in this dump.";
-    }
-  }
+  meta.textContent =
+    `${gc.count} pauses · p50 ${gc.p50Ms}ms · p95 ${gc.p95Ms}ms · p99 ${gc.p99Ms}ms · max ${gc.maxMs}ms`;
+  setSeries(
+    state.charts.gcPause,
+    gc.pauses.map((p) => fmtTime(p.timestampMs)),
+    [gc.pauses.map((p) => p.durationMs)]);
 }
 
 function escapeHtml(value) {

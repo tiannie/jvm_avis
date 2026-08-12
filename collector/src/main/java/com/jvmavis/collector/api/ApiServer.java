@@ -142,6 +142,13 @@ public final class ApiServer {
                     return;
                 }
                 var latest = profileStore.rolling(id, config.profileWindowSeconds() * 1000L);
+                // Snapshots only change once per dump interval, but the UI polls far more often.
+                // Flame graph trees dominate this response, so skip resending an unchanged one.
+                Long since = parseLong(query(exchange).get("since"));
+                if (since != null && latest.isPresent() && since == latest.get().timestampMs()) {
+                    writeJson(exchange, 200, Map.of("unchanged", true, "timestampMs", since));
+                    return;
+                }
                 if (latest.isEmpty()) {
                     ObjectNode empty = mapper.createObjectNode();
                     empty.putNull("timestampMs");
@@ -179,7 +186,8 @@ public final class ApiServer {
     }
 
     private void writeJson(HttpExchange exchange, int status, Object body) throws IOException {
-        byte[] bytes = mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(body);
+        // Metric series and flame trees are large; indentation is a sizeable share of the bytes.
+        byte[] bytes = mapper.writeValueAsBytes(body);
         Headers headers = exchange.getResponseHeaders();
         headers.set("Content-Type", "application/json; charset=utf-8");
         headers.set("Cache-Control", "no-store");

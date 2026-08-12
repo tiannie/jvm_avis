@@ -50,11 +50,32 @@
         <h2>GC cumulative</h2>
         <canvas id="gc-chart" height="120"></canvas>
       </article>
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Memory pools</h2>
+          <span id="pool-meta" class="meta"></span>
+        </div>
+        <canvas id="pool-chart" height="120"></canvas>
+      </article>
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Collections by collector</h2>
+        </div>
+        <canvas id="collector-chart" height="120"></canvas>
+      </article>
     </section>
 
     <section class="panel">
       <div class="panel-head">
-        <h2>Flame graph</h2>
+        <h2>GC pauses</h2>
+        <span id="gc-pause-meta" class="meta"></span>
+      </div>
+      <canvas id="gc-pause-chart" height="90"></canvas>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>CPU flame graph</h2>
         <span id="profile-meta" class="meta"></span>
       </div>
       <div id="flame-graph" class="flame-graph"></div>
@@ -73,6 +94,30 @@
           </tr>
         </thead>
         <tbody id="hot-methods"></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Allocation flame graph</h2>
+        <span id="alloc-meta" class="meta"></span>
+      </div>
+      <div id="alloc-flame-graph" class="flame-graph"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Top allocating types</h2>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>%</th>
+            <th>Bytes</th>
+            <th>Type</th>
+          </tr>
+        </thead>
+        <tbody id="alloc-types"></tbody>
       </table>
     </section>
   </main>

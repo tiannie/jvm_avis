@@ -1,6 +1,9 @@
 package com.jvmavis.collector.profile;
 
+import com.jvmavis.collector.model.AllocationSite;
 import com.jvmavis.collector.model.FlameNode;
+import com.jvmavis.collector.model.GcPause;
+import com.jvmavis.collector.model.GcPauseSummary;
 import com.jvmavis.collector.model.HotMethod;
 import com.jvmavis.collector.model.ProfileSnapshot;
 
@@ -23,7 +26,7 @@ public final class ProfileMerger {
     public static ProfileSnapshot merge(List<ProfileSnapshot> snapshots) {
         List<ProfileSnapshot> usable = new ArrayList<>();
         for (ProfileSnapshot snapshot : snapshots) {
-            if (snapshot != null && snapshot.flameGraph() != null && snapshot.totalSamples() > 0) {
+            if (snapshot != null && hasData(snapshot)) {
                 usable.add(snapshot);
             }
         }
@@ -34,16 +37,26 @@ public final class ProfileMerger {
             return usable.get(0);
         }
 
-        MutableNode root = new MutableNode(usable.get(0).flameGraph().name());
+        MutableNode cpuRoot = new MutableNode("all");
+        MutableNode allocRoot = new MutableNode("all");
+        List<GcPause> pauses = new ArrayList<>();
         long total = 0;
+        long allocSamples = 0;
+        long allocBytes = 0;
         long windowStart = Long.MAX_VALUE;
         long windowEnd = Long.MIN_VALUE;
         long timestamp = Long.MIN_VALUE;
         String dumpFile = null;
 
         for (ProfileSnapshot snapshot : usable) {
-            addTree(root, snapshot.flameGraph());
+            addTree(cpuRoot, snapshot.flameGraph());
+            addTree(allocRoot, snapshot.allocationFlameGraph());
             total += snapshot.totalSamples();
+            allocSamples += snapshot.allocationSamples();
+            allocBytes += snapshot.allocatedBytes();
+            if (snapshot.gcPauses() != null) {
+                pauses.addAll(snapshot.gcPauses().pauses());
+            }
             windowStart = Math.min(windowStart, snapshot.windowStartMs());
             windowEnd = Math.max(windowEnd, snapshot.windowEndMs());
             if (snapshot.timestampMs() >= timestamp) {
@@ -57,12 +70,55 @@ public final class ProfileMerger {
                 windowStart,
                 windowEnd,
                 total,
-                hotMethods(root, total),
-                root.toFlameNode(),
+                hotMethods(cpuRoot, total),
+                cpuRoot.toFlameNode(),
+                allocSamples,
+                allocBytes,
+                topAllocations(usable, allocBytes),
+                allocRoot.toFlameNode(),
+                GcPauseSummary.of(pauses),
                 dumpFile);
     }
 
+    private static boolean hasData(ProfileSnapshot snapshot) {
+        return snapshot.totalSamples() > 0
+                || snapshot.allocationSamples() > 0
+                || (snapshot.gcPauses() != null && snapshot.gcPauses().count() > 0);
+    }
+
+    /**
+     * Per-dump lists are already capped at the top N, so a class can be missing from some of them.
+     * Its bytes still land in the merged total, which is the honest reading: the table shows the
+     * biggest allocators, not a complete breakdown.
+     */
+    private static List<AllocationSite> topAllocations(List<ProfileSnapshot> snapshots, long totalBytes) {
+        Map<String, long[]> byType = new HashMap<>();
+        for (ProfileSnapshot snapshot : snapshots) {
+            for (AllocationSite site : snapshot.topAllocations()) {
+                byType.compute(site.type(), (k, v) -> {
+                    long[] acc = v == null ? new long[2] : v;
+                    acc[0] += site.bytes();
+                    acc[1] += site.samples();
+                    return acc;
+                });
+            }
+        }
+        List<AllocationSite> out = new ArrayList<>();
+        byType.entrySet().stream()
+                .sorted(Comparator.comparingLong((Map.Entry<String, long[]> e) -> e.getValue()[0]).reversed())
+                .limit(TOP_N)
+                .forEach(e -> {
+                    double pct = totalBytes == 0 ? 0.0 : (100.0 * e.getValue()[0] / totalBytes);
+                    out.add(new AllocationSite(
+                            e.getKey(), e.getValue()[0], e.getValue()[1], Math.round(pct * 100.0) / 100.0));
+                });
+        return out;
+    }
+
     private static void addTree(MutableNode target, FlameNode source) {
+        if (source == null) {
+            return;
+        }
         target.value += source.value();
         List<FlameNode> children = source.children();
         if (children == null) {

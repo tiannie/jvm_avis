@@ -1,18 +1,25 @@
 package com.jvmavis.collector.jmx;
 
+import com.jvmavis.collector.model.GcCollectorStat;
+import com.jvmavis.collector.model.MemoryPoolUsage;
 import com.jvmavis.collector.model.MetricSample;
 
 import javax.management.MBeanServerConnection;
 import javax.management.ObjectName;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
+import java.lang.management.MemoryPoolMXBean;
+import java.lang.management.MemoryType;
 import java.lang.management.MemoryUsage;
 import java.lang.management.OperatingSystemMXBean;
 import java.lang.management.RuntimeMXBean;
 import java.lang.management.ThreadMXBean;
 import java.lang.management.GarbageCollectorMXBean;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -47,19 +54,38 @@ public final class MetricScraper {
 
         long gcCount = 0;
         long gcTime = 0;
+        List<GcCollectorStat> collectors = new ArrayList<>();
         Set<ObjectName> gcNames = mbsc.queryNames(new ObjectName("java.lang:type=GarbageCollector,*"), null);
         for (ObjectName gcName : gcNames) {
             GarbageCollectorMXBean gc = ManagementFactory.newPlatformMXBeanProxy(
                     mbsc, gcName.getCanonicalName(), GarbageCollectorMXBean.class);
-            long count = gc.getCollectionCount();
-            long time = gc.getCollectionTime();
-            if (count >= 0) {
-                gcCount += count;
-            }
-            if (time >= 0) {
-                gcTime += time;
-            }
+            long count = Math.max(0, gc.getCollectionCount());
+            long time = Math.max(0, gc.getCollectionTime());
+            collectors.add(new GcCollectorStat(gc.getName(), count, time));
+            gcCount += count;
+            gcTime += time;
         }
+        collectors.sort(Comparator.comparing(GcCollectorStat::name));
+
+        List<MemoryPoolUsage> pools = new ArrayList<>();
+        Set<ObjectName> poolNames = mbsc.queryNames(new ObjectName("java.lang:type=MemoryPool,*"), null);
+        for (ObjectName poolName : poolNames) {
+            MemoryPoolMXBean pool = ManagementFactory.newPlatformMXBeanProxy(
+                    mbsc, poolName.getCanonicalName(), MemoryPoolMXBean.class);
+            MemoryUsage usage = pool.getUsage();
+            // Heap pools only: this rides on every one-second sample, and the non-heap pools are
+            // already covered in aggregate by nonHeapUsedBytes.
+            if (usage == null || pool.getType() != MemoryType.HEAP) {
+                continue;
+            }
+            pools.add(new MemoryPoolUsage(
+                    pool.getName(),
+                    true,
+                    usage.getUsed(),
+                    usage.getCommitted(),
+                    usage.getMax()));
+        }
+        pools.sort(Comparator.comparing(MemoryPoolUsage::name));
 
         Map<String, Integer> states = sampleThreadStates(threads);
 
@@ -77,6 +103,8 @@ public final class MetricScraper {
                 nonHeap.getUsed(),
                 gcCount,
                 gcTime,
+                collectors,
+                pools,
                 threads.getThreadCount(),
                 threads.getDaemonThreadCount(),
                 threads.getPeakThreadCount(),

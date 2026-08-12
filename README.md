@@ -4,9 +4,12 @@ MVP collector for **always-on bounded JFR** + **1s JMX metrics** from remote Hot
 
 ## What it does
 
-- Scrapes heap, CPU, GC counters, and thread-state samples over JMX every second
+- Scrapes heap, CPU, per-collector GC counters, heap pool usage, and thread-state samples over JMX every second
 - Periodically streams a snapshot from the target’s always-on JFR recording via `FlightRecorderMXBean`, fetching only what the previous dump did not already read
-- Parses `jdk.ExecutionSample` events into a hot-methods table and an inclusive CPU flame graph
+- Parses each dump once into three views:
+  - `jdk.ExecutionSample` → hot methods and an inclusive CPU flame graph
+  - `jdk.ObjectAllocationSample` → top allocating types and an allocation flame graph weighted by bytes
+  - `jdk.GCPhasePause` → pause distribution with p50/p95/p99, which cumulative GC time cannot show
 - Serves a small charting UI at `http://localhost:8080`
 
 ## Target JVM prerequisites
@@ -110,7 +113,10 @@ For the demo chart, `JAVA_RMI_SERVER_HOSTNAME` defaults to `demo-target` (the Se
 | `POST` | `/api/targets` | `{"host","port","label?"}` |
 | `DELETE` | `/api/targets/{id}` | Remove target |
 | `GET` | `/api/targets/{id}/metrics` | Time series (`?from=&to=` epoch ms) |
-| `GET` | `/api/targets/{id}/profile` | Latest snapshot (`hotMethods` + `flameGraph` tree) |
+| `GET` | `/api/targets/{id}/profile` | Merged profile: `hotMethods`, `flameGraph`, `topAllocations`, `allocationFlameGraph`, `gcPauses` |
+
+The profile response is dominated by its flame trees but only changes once per dump interval. Pass
+`?since=<timestampMs>` to get `{"unchanged":true}` back instead when nothing has moved.
 
 ## Config
 

@@ -1,9 +1,10 @@
 package com.jvmavis.collector.jmx;
 
 import com.jvmavis.collector.config.CollectorConfig;
-import com.jvmavis.collector.jfr.JfrHotMethodParser;
+import com.jvmavis.collector.jfr.JfrDumpParser;
 import com.jvmavis.collector.jfr.JfrStreamDumper;
 import com.jvmavis.collector.jfr.ParsedProfile;
+import com.jvmavis.collector.jfr.ProfileCursor;
 import com.jvmavis.collector.model.MetricSample;
 import com.jvmavis.collector.model.ProfileSnapshot;
 import com.jvmavis.collector.model.TargetInfo;
@@ -12,7 +13,6 @@ import com.jvmavis.collector.store.ProfileStore;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +26,7 @@ public final class TargetMonitor {
     private final ProfileStore profileStore;
     private final MetricScraper scraper = new MetricScraper();
     private final JfrStreamDumper dumper;
-    private final JfrHotMethodParser parser = new JfrHotMethodParser();
+    private final JfrDumpParser parser = new JfrDumpParser();
     private final Map<String, MonitoredTarget> targets = new ConcurrentHashMap<>();
 
     public TargetMonitor(CollectorConfig config, MetricStore metricStore, ProfileStore profileStore) {
@@ -93,12 +93,12 @@ public final class TargetMonitor {
                 JmxConnection conn = target.ensureConnected();
                 // First dump is unbounded so the UI has a full window immediately; later dumps
                 // only carry what the previous one did not already read.
-                Instant cursor = target.profileCursor();
-                dumper.dumpToFile(conn.connection(), dumpFile, cursor);
+                ProfileCursor cursor = target.profileCursor();
+                dumper.dumpToFile(conn.connection(), dumpFile, cursor.earliest());
                 ParsedProfile parsed = parser.parse(dumpFile, System.currentTimeMillis(), cursor);
                 ProfileSnapshot snapshot = parsed.snapshot();
                 profileStore.add(target.id(), snapshot);
-                target.markProfileOk(snapshot.timestampMs(), parsed.newestSample());
+                target.markProfileOk(snapshot.timestampMs(), parsed.cursor());
             } catch (Exception e) {
                 String msg = e.getMessage() == null ? e.toString() : e.getMessage();
                 target.markError("JFR dump: " + msg);
