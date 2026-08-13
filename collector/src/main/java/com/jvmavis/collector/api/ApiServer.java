@@ -28,6 +28,8 @@ public final class ApiServer {
             Pattern.compile("^/api/targets/([^/]+)/metrics$");
     private static final Pattern TARGET_PROFILE =
             Pattern.compile("^/api/targets/([^/]+)/profile$");
+    private static final Pattern TARGET_THREADS =
+            Pattern.compile("^/api/targets/([^/]+)/threads$");
     private static final Pattern TARGET_ONE =
             Pattern.compile("^/api/targets/([^/]+)$");
 
@@ -131,6 +133,20 @@ public final class ApiServer {
                 Long from = parseLong(q.get("from"));
                 Long to = parseLong(q.get("to"));
                 writeJson(exchange, 200, metricStore.query(id, from, to));
+                return;
+            }
+
+            Matcher threads = TARGET_THREADS.matcher(path);
+            if ("GET".equals(method) && threads.matches()) {
+                String id = urlDecode(threads.group(1));
+                if (monitor.getTarget(id).isEmpty()) {
+                    writeJson(exchange, 404, Map.of("error", "target not found"));
+                    return;
+                }
+                writeJson(
+                        exchange,
+                        200,
+                        profileStore.threadSeries(id, config.profileWindowSeconds() * 1000L));
                 return;
             }
 

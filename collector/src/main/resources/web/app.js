@@ -388,6 +388,54 @@ function renderThreadCpu(threads) {
     `<td>${escapeHtml(row.thread)}</td>`);
 }
 
+/** Colour ramp for lane intensity: dim slate through blue to a hot amber. */
+function laneColor(fraction) {
+  if (fraction <= 0) return "var(--bg2)";
+  const hue = 210 - 175 * Math.min(1, fraction);
+  const light = 22 + 33 * Math.min(1, fraction);
+  return `hsl(${hue} 70% ${light}%)`;
+}
+
+async function refreshThreadLanes() {
+  if (!state.targetId) return;
+  const series = await api(`/api/targets/${encodeURIComponent(state.targetId)}/threads`);
+  const container = document.getElementById("thread-lanes");
+  const slots = (series.timestampsMs || []).length;
+  if (!slots || !series.lanes.length) {
+    container.innerHTML = "<div class=\"lane-empty\">Waiting for thread CPU readings…</div>";
+    return;
+  }
+
+  // Percentages are small in absolute terms, so scale intensity to the window's own peak.
+  const peak = series.maxPercent || 1;
+  const parts = [];
+  for (const lane of series.lanes) {
+    parts.push(`<div class="lane-label" title="${escapeHtml(lane.thread)}">` +
+      `${escapeHtml(lane.thread)}</div>`);
+    const cells = [];
+    for (let i = 0; i < slots; i++) {
+      const user = lane.userPercent[i];
+      const system = lane.systemPercent[i];
+      if (user === null || user === undefined) {
+        cells.push("<div class=\"lane-cell\" title=\"no reading\"></div>");
+        continue;
+      }
+      const value = user + system;
+      const tip = `${lane.thread}\n${fmtTime(series.timestampsMs[i])}\n` +
+        `user ${user.toFixed(2)}%  system ${system.toFixed(2)}%`;
+      cells.push(`<div class="lane-cell" style="background:${laneColor(value / peak)}" ` +
+        `title="${escapeHtml(tip)}"></div>`);
+    }
+    parts.push(`<div class="lane-track" style="grid-template-columns:repeat(${slots},1fr)">` +
+      `${cells.join("")}</div>`);
+  }
+  parts.push("<div></div>");
+  parts.push(`<div class="lane-axis"><span>${fmtTime(series.timestampsMs[0])}</span>` +
+    `<span>peak ${peak.toFixed(2)}% of one core</span>` +
+    `<span>${fmtTime(series.timestampsMs[slots - 1])}</span></div>`);
+  container.innerHTML = parts.join("");
+}
+
 function renderLeakCandidates(candidates) {
   const rows = candidates || [];
   document.getElementById("leak-meta").textContent = rows.length
@@ -448,7 +496,7 @@ function escapeHtml(value) {
 async function tick() {
   try {
     await refreshTargets();
-    await Promise.all([refreshMetrics(), refreshProfile()]);
+    await Promise.all([refreshMetrics(), refreshProfile(), refreshThreadLanes()]);
   } catch (err) {
     console.error(err);
     document.getElementById("target-meta").textContent = String(err.message || err);

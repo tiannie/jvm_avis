@@ -139,6 +139,52 @@ td:nth-child(1), td:nth-child(2) { width: 5rem; }
   z-index: 10;
 }
 
+/* One row per thread: a label column, then a cell per dump. */
+.lanes {
+  display: grid;
+  grid-template-columns: minmax(9rem, 14rem) 1fr;
+  gap: 2px 0.6rem;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  margin-bottom: 1rem;
+  overflow-x: auto;
+}
+
+.lane-label {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.lane-track {
+  display: grid;
+  gap: 1px;
+  height: 14px;
+}
+
+.lane-cell {
+  border-radius: 2px;
+  background: var(--bg2);
+  min-width: 2px;
+}
+
+.lane-axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.7rem;
+  padding-top: 0.2rem;
+}
+
+.lane-empty {
+  color: var(--muted);
+  padding: 0.5rem 0;
+}
+
 .status-ok { color: var(--ok); }
 .status-bad { color: var(--bad); }
 
