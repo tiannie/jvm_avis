@@ -158,6 +158,8 @@ async function refreshTargets() {
     select.innerHTML = "<option value=\"\">No targets</option>";
     state.targetId = null;
     document.getElementById("target-meta").textContent = "Add a JMX target to begin.";
+    document.getElementById("thread-lanes").innerHTML = "";
+    document.getElementById("thread-state-lanes").innerHTML = "";
     clearAllFlameGraphs();
     return;
   }
@@ -396,6 +398,57 @@ function laneColor(fraction) {
   return `hsl(${hue} 70% ${light}%)`;
 }
 
+const STATE_COLORS = {
+  RUNNABLE: "#3ecf8e",
+  BLOCKED: "#ff6b7a",
+  WAITING: "#5a6b8c",
+  TIMED_WAITING: "#9b7bff",
+  NEW: "#ffc857",
+  TERMINATED: "#3a4256",
+};
+
+function stateColor(state) {
+  return STATE_COLORS[state] || "var(--bg2)";
+}
+
+async function refreshThreadStateLanes() {
+  if (!state.targetId) return;
+  const series = await api(`/api/targets/${encodeURIComponent(state.targetId)}/thread-states`);
+  const container = document.getElementById("thread-state-lanes");
+  const meta = document.getElementById("thread-state-meta");
+  const slots = (series.timestampsMs || []).length;
+  if (!slots || !series.lanes.length) {
+    container.innerHTML = "<div class=\"lane-empty\">Waiting for thread state samples…</div>";
+    meta.textContent = "";
+    return;
+  }
+  const blocked = series.lanes.filter((l) => l.blockedBuckets > 0).length;
+  meta.textContent =
+    `${Math.round(series.bucketMs / 1000)}s buckets · ` +
+    (blocked ? `${blocked} threads saw BLOCKED` : "no blocking seen");
+
+  const parts = [];
+  for (const lane of series.lanes) {
+    parts.push(`<div class="lane-label" title="${escapeHtml(lane.thread)}">` +
+      `${escapeHtml(lane.thread)}</div>`);
+    const cells = lane.states.map((s, i) => {
+      const tip = s
+        ? `${lane.thread}\n${fmtTime(series.timestampsMs[i])}\n${s}`
+        : `${lane.thread}\nnot present`;
+      return `<div class="lane-cell" style="background:${stateColor(s)}" ` +
+        `title="${escapeHtml(tip)}"></div>`;
+    });
+    parts.push(`<div class="lane-track" style="grid-template-columns:repeat(${slots},1fr)">` +
+      `${cells.join("")}</div>`);
+  }
+  parts.push("<div></div>");
+  parts.push('<div class="lane-axis">' +
+    Object.keys(STATE_COLORS).slice(0, 4).map((s) =>
+      `<span><span class="lane-key" style="background:${stateColor(s)}"></span>${s}</span>`).join("") +
+    "</div>");
+  container.innerHTML = parts.join("");
+}
+
 async function refreshThreadLanes() {
   if (!state.targetId) return;
   const series = await api(`/api/targets/${encodeURIComponent(state.targetId)}/threads`);
@@ -496,7 +549,12 @@ function escapeHtml(value) {
 async function tick() {
   try {
     await refreshTargets();
-    await Promise.all([refreshMetrics(), refreshProfile(), refreshThreadLanes()]);
+    await Promise.all([
+      refreshMetrics(),
+      refreshProfile(),
+      refreshThreadLanes(),
+      refreshThreadStateLanes(),
+    ]);
   } catch (err) {
     console.error(err);
     document.getElementById("target-meta").textContent = String(err.message || err);

@@ -5,6 +5,7 @@ import com.jvmavis.collector.config.CollectorConfig;
 import com.jvmavis.collector.jmx.TargetMonitor;
 import com.jvmavis.collector.store.MetricStore;
 import com.jvmavis.collector.store.ProfileStore;
+import com.jvmavis.collector.store.ThreadStateStore;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,7 +20,10 @@ public final class Main {
 
         MetricStore metricStore = new MetricStore(config.metricRetentionSeconds());
         ProfileStore profileStore = new ProfileStore();
-        TargetMonitor monitor = new TargetMonitor(config, metricStore, profileStore);
+        // Thread names on every scrape are only kept for as long as the lane view shows them.
+        ThreadStateStore threadStateStore = new ThreadStateStore(config.profileWindowSeconds());
+        TargetMonitor monitor =
+                new TargetMonitor(config, metricStore, profileStore, threadStateStore);
 
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2, r -> {
             Thread t = new Thread(r, "jvm-avis-scheduler");
@@ -39,7 +43,7 @@ public final class Main {
                 config.jfrDumpIntervalSeconds(),
                 TimeUnit.SECONDS);
 
-        ApiServer api = new ApiServer(config, monitor, metricStore, profileStore);
+        ApiServer api = new ApiServer(config, monitor, metricStore, profileStore, threadStateStore);
         api.start();
 
         if (config.initialTargetHost() != null) {

@@ -10,6 +10,7 @@ import com.jvmavis.collector.model.ProfileSnapshot;
 import com.jvmavis.collector.model.TargetInfo;
 import com.jvmavis.collector.store.MetricStore;
 import com.jvmavis.collector.store.ProfileStore;
+import com.jvmavis.collector.store.ThreadStateStore;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,15 +26,21 @@ public final class TargetMonitor {
     private final CollectorConfig config;
     private final MetricStore metricStore;
     private final ProfileStore profileStore;
+    private final ThreadStateStore threadStateStore;
     private final MetricScraper scraper = new MetricScraper();
     private final JfrStreamDumper dumper;
     private final JfrDumpParser parser = new JfrDumpParser();
     private final Map<String, MonitoredTarget> targets = new ConcurrentHashMap<>();
 
-    public TargetMonitor(CollectorConfig config, MetricStore metricStore, ProfileStore profileStore) {
+    public TargetMonitor(
+            CollectorConfig config,
+            MetricStore metricStore,
+            ProfileStore profileStore,
+            ThreadStateStore threadStateStore) {
         this.config = config;
         this.metricStore = metricStore;
         this.profileStore = profileStore;
+        this.threadStateStore = threadStateStore;
         this.dumper = new JfrStreamDumper(config.recordingName());
     }
 
@@ -56,6 +63,7 @@ public final class TargetMonitor {
         removed.close();
         metricStore.remove(id);
         profileStore.remove(id);
+        threadStateStore.remove(id);
         return true;
     }
 
@@ -77,8 +85,10 @@ public final class TargetMonitor {
         for (MonitoredTarget target : targets.values()) {
             try {
                 JmxConnection conn = target.ensureConnected();
-                MetricSample sample = scraper.scrape(conn.connection());
+                MetricScraper.ScrapeResult result = scraper.scrape(conn.connection());
+                MetricSample sample = result.sample();
                 metricStore.add(target.id(), sample);
+                threadStateStore.add(target.id(), sample.timestampMs(), result.threadStates());
                 target.markMetricOk(sample.timestampMs());
             } catch (Exception e) {
                 target.markError(e.getMessage());

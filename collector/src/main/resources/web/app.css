@@ -101,6 +101,11 @@ main {
   gap: 1rem;
 }
 
+/* Lanes need the full width to stay legible; charts sit two-up around them. */
+.charts > .panel:has(.lanes) {
+  grid-column: 1 / -1;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -183,6 +188,15 @@ td:nth-child(1), td:nth-child(2) { width: 5rem; }
 .lane-empty {
   color: var(--muted);
   padding: 0.5rem 0;
+}
+
+.lane-key {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  margin-right: 0.3rem;
+  vertical-align: middle;
 }
 
 .status-ok { color: var(--ok); }

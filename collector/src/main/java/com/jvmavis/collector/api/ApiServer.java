@@ -5,8 +5,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jvmavis.collector.config.CollectorConfig;
 import com.jvmavis.collector.jmx.TargetMonitor;
 import com.jvmavis.collector.model.TargetInfo;
+import com.jvmavis.collector.profile.ThreadStateSeriesBuilder;
 import com.jvmavis.collector.store.MetricStore;
 import com.jvmavis.collector.store.ProfileStore;
+import com.jvmavis.collector.store.ThreadStateStore;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -30,6 +32,8 @@ public final class ApiServer {
             Pattern.compile("^/api/targets/([^/]+)/profile$");
     private static final Pattern TARGET_THREADS =
             Pattern.compile("^/api/targets/([^/]+)/threads$");
+    private static final Pattern TARGET_THREAD_STATES =
+            Pattern.compile("^/api/targets/([^/]+)/thread-states$");
     private static final Pattern TARGET_ONE =
             Pattern.compile("^/api/targets/([^/]+)$");
 
@@ -37,6 +41,7 @@ public final class ApiServer {
     private final TargetMonitor monitor;
     private final MetricStore metricStore;
     private final ProfileStore profileStore;
+    private final ThreadStateStore threadStateStore;
     private final ObjectMapper mapper = new ObjectMapper();
     private HttpServer server;
 
@@ -44,11 +49,13 @@ public final class ApiServer {
             CollectorConfig config,
             TargetMonitor monitor,
             MetricStore metricStore,
-            ProfileStore profileStore) {
+            ProfileStore profileStore,
+            ThreadStateStore threadStateStore) {
         this.config = config;
         this.monitor = monitor;
         this.metricStore = metricStore;
         this.profileStore = profileStore;
+        this.threadStateStore = threadStateStore;
     }
 
     public void start() throws IOException {
@@ -147,6 +154,17 @@ public final class ApiServer {
                         exchange,
                         200,
                         profileStore.threadSeries(id, config.profileWindowSeconds() * 1000L));
+                return;
+            }
+
+            Matcher threadStates = TARGET_THREAD_STATES.matcher(path);
+            if ("GET".equals(method) && threadStates.matches()) {
+                String id = urlDecode(threadStates.group(1));
+                if (monitor.getTarget(id).isEmpty()) {
+                    writeJson(exchange, 404, Map.of("error", "target not found"));
+                    return;
+                }
+                writeJson(exchange, 200, ThreadStateSeriesBuilder.build(threadStateStore.recent(id)));
                 return;
             }
 

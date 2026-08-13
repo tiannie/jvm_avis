@@ -128,6 +128,7 @@ For the demo chart, `JAVA_RMI_SERVER_HOSTNAME` defaults to `demo-target` (the Se
 | `GET` | `/api/targets/{id}/metrics` | Time series (`?from=&to=` epoch ms) |
 | `GET` | `/api/targets/{id}/profile` | Merged profile: `hotMethods`, `flameGraph`, `topAllocations`, `allocationFlameGraph`, `gcPauses`, `threadCpu`, `leakCandidates`, `monitorEvents`, `exceptions` |
 | `GET` | `/api/targets/{id}/threads` | Per-thread CPU over the window, one lane per thread |
+| `GET` | `/api/targets/{id}/thread-states` | Per-thread state over the window, bucketed into lanes |
 
 The profile response is dominated by its flame trees but only changes once per dump interval. Pass
 `?since=<timestampMs>` to get `{"unchanged":true}` back instead when nothing has moved.

@@ -19,12 +19,20 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 public final class MetricScraper {
-    public MetricSample scrape(MBeanServerConnection mbsc) throws Exception {
+    /**
+     * @param threadStates each thread's current state by name, kept out of {@link MetricSample} so
+     *                     it does not ride on the metrics time series, which is polled whole
+     */
+    public record ScrapeResult(MetricSample sample, Map<String, String> threadStates) {
+    }
+
+    public ScrapeResult scrape(MBeanServerConnection mbsc) throws Exception {
         long now = System.currentTimeMillis();
 
         MemoryMXBean memory = ManagementFactory.newPlatformMXBeanProxy(
@@ -87,14 +95,14 @@ public final class MetricScraper {
         }
         pools.sort(Comparator.comparing(MemoryPoolUsage::name));
 
-        Map<String, Integer> states = sampleThreadStates(threads);
+        ThreadStates states = sampleThreadStates(threads);
 
         // Touch runtime bean so connection failures surface early on odd targets.
         RuntimeMXBean ignored = ManagementFactory.newPlatformMXBeanProxy(
                 mbsc, ManagementFactory.RUNTIME_MXBEAN_NAME, RuntimeMXBean.class);
         ignored.getUptime();
 
-        return new MetricSample(
+        MetricSample sample = new MetricSample(
                 now,
                 cpu,
                 heap.getUsed(),
@@ -109,7 +117,8 @@ public final class MetricScraper {
                 threads.getDaemonThreadCount(),
                 threads.getPeakThreadCount(),
                 deadlockedThreadCount(threads),
-                states);
+                states.counts());
+        return new ScrapeResult(sample, states.byThread());
     }
 
     private static int deadlockedThreadCount(ThreadMXBean threads) {
@@ -122,11 +131,18 @@ public final class MetricScraper {
         }
     }
 
-    private static Map<String, Integer> sampleThreadStates(ThreadMXBean threads) {
+    /**
+     * Counts threads per state and, in the same pass, records each thread's state by name. The
+     * {@code getThreadInfo} round trip is the expensive part and it already carries both, so the
+     * per-thread detail is free once the call is made.
+     */
+    private static ThreadStates sampleThreadStates(ThreadMXBean threads) {
         Map<Thread.State, Integer> counts = new EnumMap<>(Thread.State.class);
         for (Thread.State state : Thread.State.values()) {
             counts.put(state, 0);
         }
+        Map<String, String> byThread = new LinkedHashMap<>();
+
         long[] ids = threads.getAllThreadIds();
         // Cap dump size for very large thread pools.
         int limit = Math.min(ids.length, 500);
@@ -139,6 +155,7 @@ public final class MetricScraper {
                     continue;
                 }
                 counts.merge(info.getThreadState(), 1, Integer::sum);
+                byThread.put(info.getThreadName(), info.getThreadState().name());
             }
         }
         Map<String, Integer> out = new HashMap<>();
@@ -146,6 +163,9 @@ public final class MetricScraper {
             out.put(e.getKey().name(), e.getValue());
         }
         out.put("SAMPLED", limit);
-        return out;
+        return new ThreadStates(out, byThread);
+    }
+
+    private record ThreadStates(Map<String, Integer> counts, Map<String, String> byThread) {
     }
 }
