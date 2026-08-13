@@ -120,6 +120,60 @@
         <tbody id="alloc-types"></tbody>
       </table>
     </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>CPU by thread</h2>
+        <span id="thread-cpu-meta" class="meta"></span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>User %</th>
+            <th>Sys %</th>
+            <th>Thread</th>
+          </tr>
+        </thead>
+        <tbody id="thread-cpu"></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Retained objects</h2>
+        <span id="leak-meta" class="meta"></span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Samples</th>
+            <th>Oldest</th>
+            <th>Type</th>
+            <th>Allocated by</th>
+          </tr>
+        </thead>
+        <tbody id="leak-candidates"></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Monitors</h2>
+        <span id="monitor-meta" class="meta"></span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Kind</th>
+            <th>Events</th>
+            <th>Total</th>
+            <th>Max</th>
+            <th>Monitor</th>
+          </tr>
+        </thead>
+        <tbody id="monitor-events"></tbody>
+      </table>
+    </section>
   </main>
 
   <script src="/static/app.js"></script>

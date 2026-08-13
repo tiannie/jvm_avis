@@ -17,6 +17,8 @@ public record MetricSample(
         int threadCount,
         int daemonThreadCount,
         int peakThreadCount,
+        /** Threads in a monitor or ownable-synchronizer deadlock; anything above zero is a bug. */
+        int deadlockedThreadCount,
         Map<String, Integer> threadStates
 ) {
 }

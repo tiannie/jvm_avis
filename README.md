@@ -4,13 +4,26 @@ MVP collector for **always-on bounded JFR** + **1s JMX metrics** from remote Hot
 
 ## What it does
 
-- Scrapes heap, CPU, per-collector GC counters, heap pool usage, and thread-state samples over JMX every second
+- Scrapes heap, CPU, per-collector GC counters, heap pool usage, thread states, and deadlock checks over JMX every second
 - Periodically streams a snapshot from the target’s always-on JFR recording via `FlightRecorderMXBean`, fetching only what the previous dump did not already read
-- Parses each dump once into three views:
+- Parses each dump once into several views:
   - `jdk.ExecutionSample` → hot methods and an inclusive CPU flame graph
   - `jdk.ObjectAllocationSample` → top allocating types and an allocation flame graph weighted by bytes
   - `jdk.GCPhasePause` → pause distribution with p50/p95/p99, which cumulative GC time cannot show
+  - `jdk.ThreadCPULoad` → CPU per thread, split user/system
+  - `jdk.OldObjectSample` → sampled objects still reachable, grouped by type and origin
+  - `jdk.JavaMonitorEnter`/`Wait` → time blocked on locks, kept distinct from deliberate waits
+  - `jdk.ExceptionStatistics` → throw rate
 - Serves a small charting UI at `http://localhost:8080`
+
+Views merge differently and the distinction matters. Samples, pauses and monitor events are
+occurrences and add up across dumps. Thread load and retained objects are re-reported in full every
+chunk, so the newest reading replaces the previous one. Exception counts are a running total, so a
+window takes its outermost readings. See `ProfileMerger`.
+
+Two limits worth knowing under `settings=default`: contended monitor entry is only recorded above
+20ms, and old-object samples carry no allocation stack, so retained objects are attributed to the
+allocating thread. Both improve with `settings=profile` on the target, at higher overhead.
 
 ## Target JVM prerequisites
 
@@ -113,7 +126,7 @@ For the demo chart, `JAVA_RMI_SERVER_HOSTNAME` defaults to `demo-target` (the Se
 | `POST` | `/api/targets` | `{"host","port","label?"}` |
 | `DELETE` | `/api/targets/{id}` | Remove target |
 | `GET` | `/api/targets/{id}/metrics` | Time series (`?from=&to=` epoch ms) |
-| `GET` | `/api/targets/{id}/profile` | Merged profile: `hotMethods`, `flameGraph`, `topAllocations`, `allocationFlameGraph`, `gcPauses` |
+| `GET` | `/api/targets/{id}/profile` | Merged profile: `hotMethods`, `flameGraph`, `topAllocations`, `allocationFlameGraph`, `gcPauses`, `threadCpu`, `leakCandidates`, `monitorEvents`, `exceptions` |
 
 The profile response is dominated by its flame trees but only changes once per dump interval. Pass
 `?since=<timestampMs>` to get `{"unchanged":true}` back instead when nothing has moved.

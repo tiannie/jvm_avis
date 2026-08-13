@@ -15,13 +15,13 @@ import java.time.Instant;
  * samples by roughly 1%, which is well inside the sampling error those views already carry. Exactly
  * countable events must dedupe on their own identity instead — see {@code GcPauseSummary}.
  */
-public record ProfileCursor(Instant execution, Instant allocation, Instant gcPause) {
-    public static final ProfileCursor EMPTY = new ProfileCursor(null, null, null);
+public record ProfileCursor(Instant execution, Instant allocation, Instant gcPause, Instant monitor) {
+    public static final ProfileCursor EMPTY = new ProfileCursor(null, null, null, null);
 
     /** Null means nothing has been read yet, so the first stream is deliberately unbounded. */
     public Instant earliest() {
         Instant earliest = null;
-        for (Instant candidate : new Instant[]{execution, allocation, gcPause}) {
+        for (Instant candidate : new Instant[]{execution, allocation, gcPause, monitor}) {
             if (candidate != null && (earliest == null || candidate.isBefore(earliest))) {
                 earliest = candidate;
             }
@@ -39,11 +39,16 @@ public record ProfileCursor(Instant execution, Instant allocation, Instant gcPau
      *                       the whole recording across on every single dump.
      */
     public ProfileCursor advance(
-            Instant newExecution, Instant newAllocation, Instant newGcPause, Instant coveredThrough) {
+            Instant newExecution,
+            Instant newAllocation,
+            Instant newGcPause,
+            Instant newMonitor,
+            Instant coveredThrough) {
         return new ProfileCursor(
                 pick(execution, newExecution, coveredThrough),
                 pick(allocation, newAllocation, coveredThrough),
-                pick(gcPause, newGcPause, coveredThrough));
+                pick(gcPause, newGcPause, coveredThrough),
+                pick(monitor, newMonitor, coveredThrough));
     }
 
     private static Instant pick(Instant current, Instant observed, Instant coveredThrough) {

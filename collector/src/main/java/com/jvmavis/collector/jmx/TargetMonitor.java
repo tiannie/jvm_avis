@@ -13,6 +13,7 @@ import com.jvmavis.collector.store.ProfileStore;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -91,18 +92,21 @@ public final class TargetMonitor {
                     target.id() + "-" + System.currentTimeMillis() + ".jfr");
             try {
                 JmxConnection conn = target.ensureConnected();
-                // First dump is unbounded so the UI has a full window immediately; later dumps
-                // only carry what the previous one did not already read.
                 ProfileCursor cursor = target.profileCursor();
-                dumper.dumpToFile(conn.connection(), dumpFile, cursor.earliest());
+                dumper.dumpToFile(conn.connection(), dumpFile, streamFrom(cursor));
                 ParsedProfile parsed = parser.parse(dumpFile, System.currentTimeMillis(), cursor);
                 ProfileSnapshot snapshot = parsed.snapshot();
                 profileStore.add(target.id(), snapshot);
                 target.markProfileOk(snapshot.timestampMs(), parsed.cursor());
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                // Throwable, not Exception: a dump large enough to exhaust the heap throws
+                // OutOfMemoryError, which would otherwise kill the scheduler thread silently.
                 String msg = e.getMessage() == null ? e.toString() : e.getMessage();
                 target.markError("JFR dump: " + msg);
-                System.err.println("JFR dump failed for " + target.id() + ": " + msg);
+                System.err.printf(
+                        "JFR dump failed for %s (%s, dump %d bytes)%n",
+                        target.id(), e.getClass().getName(), fileSize(dumpFile));
+                e.printStackTrace();
             } finally {
                 try {
                     Files.deleteIfExists(dumpFile);
@@ -111,6 +115,31 @@ public final class TargetMonitor {
                 }
             }
         }
+    }
+
+    /**
+     * The very first dump has no watermark to work from. Reaching back over the recording's whole
+     * {@code maxage} would populate the UI in one go, but it also transfers and parses the entire
+     * ring — enough to exhaust the collector's heap on a busy target, and a failed dump leaves the
+     * watermark unset so the next attempt is just as large. Starting one interval back instead
+     * makes startup cost the same as steady state; the window fills in as dumps accumulate.
+     *
+     * <p>This instant is read by the target, so it assumes the two clocks are roughly aligned.
+     * Skew only shifts the first window, which the watermark corrects from the next dump onwards.
+     */
+    private static long fileSize(Path file) {
+        try {
+            return Files.size(file);
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    private Instant streamFrom(ProfileCursor cursor) {
+        Instant watermark = cursor.earliest();
+        return watermark != null
+                ? watermark
+                : Instant.now().minusSeconds(config.jfrDumpIntervalSeconds());
     }
 
     public void close() {

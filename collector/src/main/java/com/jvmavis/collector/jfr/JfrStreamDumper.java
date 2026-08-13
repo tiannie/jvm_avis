@@ -174,12 +174,19 @@ public final class JfrStreamDumper {
         return new TabularType(typeName, typeName, rowType, new String[]{"key"});
     }
 
+    /**
+     * Cleanup must not mask a real failure, but it must be reported. A stream or clone left open
+     * holds buffers inside the target: every {@code readStream} allocates a {@code blockSize} array
+     * there, so a close that quietly fails leaks that much per dump into the monitored JVM.
+     */
     private static void safeInvoke(
             MBeanServerConnection mbsc, String op, Object[] args, String[] sig) {
         try {
             mbsc.invoke(FLIGHT_RECORDER, op, args, sig);
-        } catch (Exception ignored) {
-            // best effort cleanup
+        } catch (Exception e) {
+            System.err.printf(
+                    "JFR %s failed, target may retain stream buffers: %s%n",
+                    op, e.getMessage() == null ? e.toString() : e.getMessage());
         }
     }
 }

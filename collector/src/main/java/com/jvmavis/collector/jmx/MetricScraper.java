@@ -108,7 +108,18 @@ public final class MetricScraper {
                 threads.getThreadCount(),
                 threads.getDaemonThreadCount(),
                 threads.getPeakThreadCount(),
+                deadlockedThreadCount(threads),
                 states);
+    }
+
+    private static int deadlockedThreadCount(ThreadMXBean threads) {
+        try {
+            long[] deadlocked = threads.findDeadlockedThreads();
+            return deadlocked == null ? 0 : deadlocked.length;
+        } catch (UnsupportedOperationException e) {
+            // Monitor deadlock detection is optional on some JVMs.
+            return 0;
+        }
     }
 
     private static Map<String, Integer> sampleThreadStates(ThreadMXBean threads) {

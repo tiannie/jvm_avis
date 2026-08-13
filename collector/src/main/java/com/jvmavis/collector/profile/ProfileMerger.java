@@ -1,17 +1,21 @@
 package com.jvmavis.collector.profile;
 
 import com.jvmavis.collector.model.AllocationSite;
+import com.jvmavis.collector.model.ExceptionRate;
 import com.jvmavis.collector.model.FlameNode;
 import com.jvmavis.collector.model.GcPause;
 import com.jvmavis.collector.model.GcPauseSummary;
 import com.jvmavis.collector.model.HotMethod;
+import com.jvmavis.collector.model.MonitorEventSummary;
 import com.jvmavis.collector.model.ProfileSnapshot;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Combines the incremental dumps taken since a target was registered into one view.
@@ -47,6 +51,7 @@ public final class ProfileMerger {
         long windowEnd = Long.MIN_VALUE;
         long timestamp = Long.MIN_VALUE;
         String dumpFile = null;
+        ProfileSnapshot newest = null;
 
         for (ProfileSnapshot snapshot : usable) {
             addTree(cpuRoot, snapshot.flameGraph());
@@ -62,6 +67,7 @@ public final class ProfileMerger {
             if (snapshot.timestampMs() >= timestamp) {
                 timestamp = snapshot.timestampMs();
                 dumpFile = snapshot.dumpFile();
+                newest = snapshot;
             }
         }
 
@@ -77,13 +83,96 @@ public final class ProfileMerger {
                 topAllocations(usable, allocBytes),
                 allocRoot.toFlameNode(),
                 GcPauseSummary.of(pauses),
-                dumpFile);
+                latestNonEmpty(usable, ProfileSnapshot::threadCpu),
+                latestNonEmpty(usable, ProfileSnapshot::leakCandidates),
+                mergeMonitorEvents(usable),
+                mergeExceptions(usable),
+                newest == null ? dumpFile : newest.dumpFile());
+    }
+
+    /**
+     * Gauges and snapshots describe the target as it is now, so the newest reading replaces older
+     * ones rather than adding to them. Empty lists are skipped: a dump that happened not to span a
+     * batch boundary should not blank the panel.
+     */
+    private static <T> List<T> latestNonEmpty(
+            List<ProfileSnapshot> snapshots, Function<ProfileSnapshot, List<T>> field) {
+        List<T> best = List.of();
+        long bestAt = Long.MIN_VALUE;
+        for (ProfileSnapshot snapshot : snapshots) {
+            List<T> value = field.apply(snapshot);
+            if (value != null && !value.isEmpty() && snapshot.timestampMs() >= bestAt) {
+                bestAt = snapshot.timestampMs();
+                best = value;
+            }
+        }
+        return best;
+    }
+
+    private static List<MonitorEventSummary> mergeMonitorEvents(List<ProfileSnapshot> snapshots) {
+        Map<String, double[]> byKey = new LinkedHashMap<>();
+        for (ProfileSnapshot snapshot : snapshots) {
+            for (MonitorEventSummary event : snapshot.monitorEvents()) {
+                byKey.compute(event.kind() + "\u0000" + event.monitorClass(), (k, v) -> {
+                    double[] acc = v == null ? new double[3] : v;
+                    acc[0] += event.events();
+                    acc[1] += event.totalMs();
+                    acc[2] = Math.max(acc[2], event.maxMs());
+                    return acc;
+                });
+            }
+        }
+        List<MonitorEventSummary> out = new ArrayList<>();
+        byKey.entrySet().stream()
+                .sorted(Comparator.comparingDouble((Map.Entry<String, double[]> e) -> e.getValue()[1]).reversed())
+                .limit(TOP_N)
+                .forEach(e -> {
+                    String[] parts = e.getKey().split("\u0000", 2);
+                    out.add(new MonitorEventSummary(
+                            parts[0],
+                            parts.length > 1 ? parts[1] : "unknown",
+                            (long) e.getValue()[0],
+                            round2(e.getValue()[1]),
+                            round2(e.getValue()[2])));
+                });
+        return out;
+    }
+
+    /** A running total spans the window from its outermost readings, so rates are not added. */
+    private static ExceptionRate mergeExceptions(List<ProfileSnapshot> snapshots) {
+        long firstCount = 0;
+        long firstAtMs = 0;
+        long lastCount = 0;
+        long lastAtMs = 0;
+        for (ProfileSnapshot snapshot : snapshots) {
+            ExceptionRate rate = snapshot.exceptions();
+            if (rate == null || rate.firstAtMs() == 0) {
+                continue;
+            }
+            if (firstAtMs == 0 || rate.firstAtMs() < firstAtMs) {
+                firstAtMs = rate.firstAtMs();
+                firstCount = rate.firstCount();
+            }
+            if (rate.lastAtMs() >= lastAtMs) {
+                lastAtMs = rate.lastAtMs();
+                lastCount = rate.lastCount();
+            }
+        }
+        return firstAtMs == 0 ? ExceptionRate.EMPTY
+                : ExceptionRate.of(firstCount, firstAtMs, lastCount, lastAtMs);
+    }
+
+    private static double round2(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 
     private static boolean hasData(ProfileSnapshot snapshot) {
         return snapshot.totalSamples() > 0
                 || snapshot.allocationSamples() > 0
-                || (snapshot.gcPauses() != null && snapshot.gcPauses().count() > 0);
+                || (snapshot.gcPauses() != null && snapshot.gcPauses().count() > 0)
+                || !snapshot.threadCpu().isEmpty()
+                || !snapshot.leakCandidates().isEmpty()
+                || !snapshot.monitorEvents().isEmpty();
     }
 
     /**

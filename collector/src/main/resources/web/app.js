@@ -219,6 +219,13 @@ async function refreshMetrics() {
   ]);
   renderMemoryPools(labels, samples);
   renderCollectors(labels, samples);
+
+  const latest = samples[samples.length - 1];
+  if (latest && latest.deadlockedThreadCount > 0) {
+    const meta = document.getElementById("target-meta");
+    meta.innerHTML +=
+      ` · <span class="status-bad">${latest.deadlockedThreadCount} DEADLOCKED THREADS</span>`;
+  }
 }
 
 function namesFrom(samples, field, key) {
@@ -332,8 +339,9 @@ async function refreshProfile() {
   const meta = document.getElementById("profile-meta");
   if (!profile.timestampMs) {
     meta.textContent = profile.message || "Waiting for first dump…";
-    fillTable("hot-methods", [], () => "");
-    fillTable("alloc-types", [], () => "");
+    for (const id of ["hot-methods", "alloc-types", "thread-cpu", "leak-candidates", "monitor-events"]) {
+      fillTable(id, [], () => "");
+    }
     clearAllFlameGraphs();
     return;
   }
@@ -363,6 +371,56 @@ async function refreshProfile() {
     "No allocation samples in this dump.");
 
   renderGcPauses(profile.gcPauses);
+  renderThreadCpu(profile.threadCpu);
+  renderLeakCandidates(profile.leakCandidates);
+  renderMonitors(profile.monitorEvents);
+  renderExceptions(profile.exceptions);
+}
+
+function renderThreadCpu(threads) {
+  const rows = threads || [];
+  const total = rows.reduce((sum, t) => sum + t.userPercent + t.systemPercent, 0);
+  document.getElementById("thread-cpu-meta").textContent = rows.length
+    ? `${rows.length} threads · ${total.toFixed(2)}% of one core`
+    : "No thread CPU samples in window";
+  fillTable("thread-cpu", rows, (row) =>
+    `<td>${row.userPercent.toFixed(2)}</td><td>${row.systemPercent.toFixed(2)}</td>` +
+    `<td>${escapeHtml(row.thread)}</td>`);
+}
+
+function renderLeakCandidates(candidates) {
+  const rows = candidates || [];
+  document.getElementById("leak-meta").textContent = rows.length
+    ? "sampled objects still reachable — surviving is normal, growing is not"
+    : "No surviving sampled objects in window";
+  fillTable("leak-candidates", rows, (row) =>
+    `<td>${row.samples}</td><td>${fmtDuration(row.maxAgeSeconds)}</td>` +
+    `<td>${escapeHtml(row.type)}</td><td>${escapeHtml(row.allocatedBy)}</td>`);
+}
+
+function renderMonitors(events) {
+  const rows = events || [];
+  const blocked = rows.filter((e) => e.kind === "BLOCKED").length;
+  document.getElementById("monitor-meta").textContent = rows.length
+    ? `${blocked} contended · WAITING is deliberate Object.wait, not contention`
+    : "No monitor events — default JFR settings only record blocking over 20ms";
+  fillTable("monitor-events", rows, (row) =>
+    `<td>${row.kind}</td><td>${row.events}</td><td>${row.totalMs.toFixed(0)} ms</td>` +
+    `<td>${row.maxMs.toFixed(1)} ms</td><td>${escapeHtml(row.monitorClass)}</td>`);
+}
+
+function renderExceptions(rate) {
+  if (!rate) return;
+  const meta = document.getElementById("profile-meta");
+  if (rate.thrownInWindow > 0) {
+    meta.textContent += ` · ${rate.perSecond}/s exceptions`;
+  }
+}
+
+function fmtDuration(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 }
 
 function renderGcPauses(gc) {
